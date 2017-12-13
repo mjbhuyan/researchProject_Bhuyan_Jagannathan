@@ -1,0 +1,83 @@
+# Apache Zookeeper
+# ================
+
+inputs:
+
+  zookeeper.tarball:
+    default: "http://www.apache.si/zookeeper/zookeeper-3.4.11/zookeeper-3.4.11.tar.gz"
+  zookeeper.checksum:
+    default: "f6bd68a1c8f7c13ea4c2c99f13082d0d71ac464ffaf3bf7a365879ab6ad10e84"
+
+node_types:
+
+  dice.components.zookeeper.Server:
+    derived_from: dice.chef.SoftwareComponent
+    properties:
+      create_runlist:
+        default:
+          - recipe[apt::default]
+          - recipe[dice_common::default]
+          - recipe[java::default]
+          - recipe[zookeeper::default]
+      configure_runlist:
+        default:
+          - recipe[zookeeper::configure]
+      start_runlist:
+        default:
+          - recipe[zookeeper::start]
+      chef_attributes:
+        default:
+          java:
+            jdk_version:    { get_input: java_version }
+            install_flavor: { get_input: java_flavor  }
+          zookeeper:
+            tarball:  { get_input: zookeeper.tarball  }
+            checksum: { get_input: zookeeper.checksum }
+
+  dice.components.zookeeper.Quorum:
+    derived_from: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        configure:
+          implementation: dice.dice_plugin.tasks.base.collect_data_for_rel
+          executor: central_deployment_agent
+          inputs:
+            rel_type: { default: dice.relationships.zookeeper.QuorumContains }
+            dest_attr: { default: zookeeper_quorum }
+            selector: { default: { attributes: { ip: ip } } }
+            container: { default: list }
+
+  # Firewall rules
+  dice.firewall_rules.zookeeper.Server:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 2181
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 2888
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 3888
+
+
+relationships:
+
+  dice.relationships.zookeeper.QuorumContains:
+    derived_from: cloudify.relationships.depends_on
+
+  dice.relationships.zookeeper.MemberOfQuorum:
+    derived_from: cloudify.relationships.depends_on
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure:
+          implementation: dice.dice_plugin.tasks.base.copy_attr_from_target
+          inputs:
+            source_name: { default: zookeeper_quorum }
+            target_name: { default: zookeeper_quorum }
+
+  dice.relationships.zookeeper.ConnectedToZookeeperQuorum:
+    derived_from: dice.relationships.zookeeper.MemberOfQuorum

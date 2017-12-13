@@ -1,0 +1,158 @@
+# Basic types
+# ===========
+#
+# This file contains basic definitions that are used across the library.
+#
+#
+# Reasons for duplication in node types definitions
+# -------------------------------------------------
+#
+# Currently, there is no way of reparenting built-in cloudify types, so we
+# basically need to define three base types:
+#
+#   * dice.LogicalNode: Equivalent of cloudify.nodes.Root.
+#   * dice.SoftwareComponent: Equivalent of cloudify.nodes.SoftwareComponent.
+#   * dice.chef.SoftwareComponent: Equivalent of
+#     cloudify.chef.nodes.SoftwareComponent.
+#
+# All DICE base types have 'configuration' property that can hold arbitrary
+# key-value pairs. Chef recipe can use contents of this property to perform
+# additional customization of configuration.
+#
+# Another addition to underlying types is 'dice.interfaces.reconfiguration'
+# interface that contains 'update_configuration' and 'reset' operations. These
+# operations will be used in the future in reconfiguration workflow. Default
+# implementation of 'update_configuration' should be fine for most use cases.
+# On the other hand, 'reset' operation is component dependent and thus must be
+# provided by implementor.
+
+# These imports are required by the library itself
+imports:
+  - http://dice-project.github.io/cloudify-chef-plugin/1.3.2/plugin.yaml
+
+
+inputs:
+
+  dns_server:
+    description: >-
+      This should be populated with DICE deployment service's private IP.
+      Doing this will ensure that services can discover each other by using
+      FQDNs for addressing.
+
+  java_version:
+    description: >-
+      Version of OpenJDK package that should be installed on machines that
+      require java.
+    default: "8"
+
+  java_flavor:
+    description: >-
+      Flavor of JDK to install. Currently supported flavors: openjdk.
+    default: openjdk
+
+  proxy:
+    description: >-
+      Caching proxy to use with Chef
+    default: ""
+
+  chef_repo:
+    description: Location of the tarball that contains DICE Chef repository.
+    default: THIS SHOULD BE REPLACED IN RELEASED VERSION
+
+  chef_version:
+    description: Chef version that should be used when converging the node.
+    default: 12.18.31
+
+
+node_types:
+
+  dice.LogicalNode:
+    derived_from: cloudify.nodes.Root
+    properties: &base_properties
+      configuration:
+        description: >
+          This propery holds arbitrary configuration data that can be used by
+          installation procedure.
+        default: {}
+      dns_server:
+        description: See dns_server input description.
+        default: { get_input: dns_server }
+      # TODO: Document additional requirements that need to be in place before
+      # using this functionality.
+      monitoring:
+        type: dice.types.MonitoringConfig
+    interfaces: &base_interfaces
+      dice.interfaces.reconfiguration:
+        update_configuration:
+          implementation: dice.dice_plugin.tasks.base.update_configuration
+          inputs:
+            configuration: { default: {} }
+        reset: {}
+
+  dice.SoftwareComponent:
+    derived_from: cloudify.nodes.SoftwareComponent
+    properties: *base_properties
+    interfaces: *base_interfaces
+
+  dice.chef.SoftwareComponent:
+    derived_from: cloudify.chef.nodes.SoftwareComponent
+    properties:
+      << : *base_properties
+      create_runlist:
+        description: >
+          Runlist that is executed when creating node instance (this is where
+          file installation should take place).
+        default: null
+      configure_runlist:
+        description: >
+          Runlist that is executed when configuring node (this is where all
+          that /etc/ files should be installed).
+        default: null
+      start_runlist:
+        description: >
+          Runlist that starts the node (this is where relevant services should
+          be enabled and started).
+        default: null
+      stop_runlist:
+        description: >
+          Runlist that stops the node (most likely, services will be stopped
+          and disabled here).
+        default: null
+      delete_runlist:
+        description: >
+          Runlist that deletes the node (should delete ALL installed files,
+          including but not limited to configuration files, files that are
+          produced while running, ...).
+        default: null
+      chef_attributes:
+        description: >
+          Chef attributes that are supplied to all runlists
+        default: {}
+      chef_repo:
+        description: >
+          Location of the tarball that contains DICE Chef repository.
+        default: { get_input: chef_repo }
+
+      # Derived types should leave this intact or bad things will happen
+      chef_config:
+        default:
+          version:     { get_input: chef_version }
+          http_proxy:  { get_input: proxy        }
+          chef_repo:   { get_property: [ SELF, chef_repo         ] }
+          attributes:  { get_property: [ SELF, chef_attributes   ] }
+          runlists:
+            create:    { get_property: [ SELF, create_runlist    ] }
+            configure: { get_property: [ SELF, configure_runlist ] }
+            start:     { get_property: [ SELF, start_runlist     ] }
+            stop:      { get_property: [ SELF, stop_runlist      ] }
+            delete:    { get_property: [ SELF, delete_runlist    ] }
+    interfaces: *base_interfaces
+
+
+relationships:
+
+  dice.relationships.ContainedIn:
+    derived_from: cloudify.relationships.contained_in
+
+  dice.relationships.Needs:
+    derived_from: cloudify.relationships.depends_on

@@ -1,0 +1,153 @@
+# Apache Storm
+# ============
+
+node_types:
+
+  dice.components.storm.Base:
+    derived_from: dice.chef.SoftwareComponent
+    properties:
+      configure_runlist:
+        default:
+          - recipe[apt::default]
+          - recipe[dice_common::default]
+          - recipe[java::default]
+          - recipe[storm::default]
+          - recipe[storm::configure]
+          - recipe[dmon_agent::default]
+          - recipe[dmon_agent::collectd]
+      stop_runlist:
+        default:
+          - recipe[dmon_agent::remove_node]
+      chef_attributes:
+        default:
+          java:
+            jdk_version:    { get_input: java_version }
+            install_flavor: { get_input: java_flavor  }
+
+  dice.components.storm.Worker:
+    derived_from: dice.components.storm.Base
+    properties:
+      start_runlist:
+        default:
+          - recipe[storm::start_supervisor]
+          - recipe[dmon_agent::storm]
+          - recipe[dmon_agent::start]
+
+  dice.components.storm.Nimbus:
+    derived_from: dice.components.storm.Base
+    properties:
+      start_runlist:
+        default:
+          - recipe[storm::start_nimbus]
+          - recipe[dmon_agent::storm]
+          - recipe[dmon_agent::start]
+
+  dice.components.storm.Topology:
+    derived_from: dice.LogicalNode
+    properties:
+      application:
+        description: >
+          Location of topology jar file. If this is relative path, file is
+          assumed to be part of the blueprint package. If this URL, file will
+          be downloaded.
+      topology_name:
+        description: >
+          Topology name (this name will be seen in Storm UI)
+      topology_class:
+        description: >
+          Class name that contains Storm topology
+      arguments:
+        description: >
+          Arguments that should be passed to topology on submission. Note that
+          when jar is executed, first argument is always topology name.
+          Arguments in this property are passed as an additional arguments
+          after name.
+        default: []
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: dice.dice_plugin.tasks.storm.submit_topology
+          inputs:
+            jar:   { default: { get_property: [ SELF, application    ] } }
+            name:  { default: { get_property: [ SELF, topology_name  ] } }
+            klass: { default: { get_property: [ SELF, topology_class ] } }
+            args:  { default: { get_property: [ SELF, arguments      ] } }
+        configure:
+          implementation: dice.dice_plugin.tasks.storm.register_topology
+          inputs:
+            topology_id: { default: { get_attribute: [ SELF, topology_id ] } }
+            monitoring:  { default: { get_property:  [ SELF, monitoring  ] } }
+          max_retries: 10
+          retry_interval: 15
+        stop:
+          implementation: dice.dice_plugin.tasks.storm.kill_topology
+          inputs:
+            name: { default: { get_property: [ SELF, topology_name  ] } }
+
+  # Firewall rules
+  dice.firewall_rules.storm.Nimbus:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 6627
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 8080
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            from_port: 6700
+            to_port: 6703
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 3773
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 3774
+            # DMon agent port (monitoring)
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 5222
+
+  dice.firewall_rules.storm.Worker:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            from_port: 6700
+            to_port: 6703
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 3773
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 3774
+            # DMon agent port (monitoring)
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 5222
+
+
+relationships:
+
+  # This alias has been left here in order not to break public API
+  dice.relationships.storm.ConnectedToZookeeperQuorum:
+    derived_from: dice.relationships.zookeeper.ConnectedToZookeeperQuorum
+
+  dice.relationships.storm.ConnectedToNimbus:
+    derived_from: cloudify.relationships.connected_to
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure:
+          implementation: dice.dice_plugin.tasks.base.copy_ip_from_target
+          inputs:
+            property: { default: storm_nimbus_ip }
+
+  dice.relationships.storm.SubmittedBy:
+    derived_from: cloudify.relationships.contained_in
+    properties:
+      connection_type: { default: all_to_one }

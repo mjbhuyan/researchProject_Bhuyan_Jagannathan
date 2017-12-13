@@ -1,0 +1,40 @@
+# OSv
+# ===
+#
+# Currently, only OpenStack supports uploading OSv images. All platforms
+# can create new OSv applications from images that are already uploaded (for
+# example, from AMIs on AWS).
+
+
+node_types:
+
+  dice.components.osv.Application:
+    # Why is osv.Application derived from image instead of server? Main reason
+    # for doing this is to bypass Cloudify agent installation that is done by
+    # default on types that derive from Compute node. Other reason is the fact
+    # that we cannot remove attributes of parent type when deriving new type.
+    derived_from: dice.RawImage
+    properties:
+      instance_type:
+        description: Instance type that should be used.
+        required: true
+      use_existing:
+        description: >
+          Set this to true if OSv image is already present on platform and use
+          ID of the image in the image property.
+        required: false
+        default: false
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: dice.dice_plugin.tasks.osv.create
+          executor: central_deployment_agent
+        start:
+          implementation: dice.dice_plugin.general.start_server
+          executor: central_deployment_agent
+        stop:
+          implementation: dice.dice_plugin.general.stop_server
+          executor: central_deployment_agent
+        delete:
+          implementation: dice.dice_plugin.tasks.osv.delete
+          executor: central_deployment_agent

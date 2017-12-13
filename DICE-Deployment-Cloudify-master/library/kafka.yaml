@@ -1,0 +1,35 @@
+# Apache Kafka
+# ============
+
+node_types:
+
+  dice.components.kafka.Broker:
+    derived_from: dice.chef.SoftwareComponent
+    properties:
+      create_runlist:
+        default:
+          - recipe[apt::default]
+          - recipe[dice_common::default]
+          - recipe[java::default]
+          - recipe[kafka::default]
+      configure_runlist:
+        default:
+          - recipe[kafka::configure]
+      start_runlist:
+        default:
+          - recipe[kafka::start]
+      chef_attributes:
+        default:
+          java:
+            jdk_version:    { get_input: java_version }
+            install_flavor: { get_input: java_flavor  }
+
+  # Firewall rules
+  dice.firewall_rules.kafka.Broker:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 9092

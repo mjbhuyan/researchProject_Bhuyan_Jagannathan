@@ -1,0 +1,126 @@
+# Apache Spark
+# ============
+
+dsl_definitions:
+
+  - &default_chef_attributes
+    java:
+      jdk_version:    { get_input: java_version }
+      install_flavor: { get_input: java_flavor  }
+
+
+node_types:
+
+  dice.components.spark.Base:
+    derived_from: dice.chef.SoftwareComponent
+    properties:
+      create_runlist:
+        default:
+          - recipe[apt::default]
+          - recipe[dice_common::default]
+          - recipe[java::default]
+          - recipe[spark::default]
+          - recipe[dmon_agent::default]
+          - recipe[dmon_agent::collectd]
+      configure_runlist:
+        default:
+          - recipe[spark::configure]
+          - recipe[dmon_agent::spark]
+      start_runlist:
+        default:
+          - recipe[spark::start]
+      stop_runlist:
+        default:
+          - recipe[dmon_agent::remove_node]
+
+  dice.components.spark.Master:
+    derived_from: dice.components.spark.Base
+    properties:
+      chef_attributes:
+        default:
+          <<: *default_chef_attributes
+          spark:
+            type: master
+
+  dice.components.spark.Worker:
+    derived_from: dice.components.spark.Base
+    properties:
+      chef_attributes:
+        default:
+          <<: *default_chef_attributes
+          spark:
+            type: worker
+
+  dice.components.spark.Application:
+    derived_from: dice.LogicalNode
+    properties:
+      jar:
+        description: >-
+          Location of application's jar file. If this is relative path, file
+          is assumed to be part of the blueprint package. If this URL, file
+          will be downloaded.
+      class:
+        description: Class that should be executed.
+      name:
+        description: Name of the application that is being submitted.
+      args:
+        description: >-
+          Arguments that should be passed to application on submission. Note
+          that when jar is executed, first argument is always application
+          name.  Arguments in this property are passed as an additional
+          arguments after name.
+        default: []
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        start:
+          implementation: dice.dice_plugin.tasks.spark.submit
+          inputs:
+            jar:   { default: { get_property: [ SELF, jar   ] } }
+            name:  { default: { get_property: [ SELF, name  ] } }
+            klass: { default: { get_property: [ SELF, class ] } }
+            args:  { default: { get_property: [ SELF, args  ] } }
+
+
+  # Firewall rules
+  dice.firewall_rules.spark.Master:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 6066
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            from_port: 7077
+            to_port: 7080
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 8080
+
+  dice.firewall_rules.spark.Worker:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            from_port: 7078
+            to_port: 7080
+
+
+relationships:
+
+  dice.relationships.spark.ConnectedToMaster:
+    derived_from: cloudify.relationships.connected_to
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure:
+          implementation: dice.dice_plugin.tasks.base.copy_ip_from_target
+          inputs:
+            property: { default: master_ip }
+
+  dice.relationships.spark.SubmittedBy:
+    derived_from: cloudify.relationships.contained_in
+    properties:
+      connection_type: { default: all_to_one }

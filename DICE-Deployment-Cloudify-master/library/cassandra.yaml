@@ -1,0 +1,82 @@
+# Apache Cassandra
+# ================
+
+node_types:
+
+  dice.components.cassandra.Base:
+    derived_from: dice.chef.SoftwareComponent
+    properties:
+      create_runlist:
+        default:
+          - recipe[apt::default]
+          - recipe[dice_common::default]
+          - recipe[java::default]
+          - recipe[cassandra::default]
+          - recipe[dmon_agent::default]
+          - recipe[dmon_agent::collectd]
+      configure_runlist:
+        default:
+          - recipe[cassandra::configure]
+      start_runlist:
+        default:
+          - recipe[cassandra::start]
+          - recipe[dmon_agent::cassandra]
+      stop_runlist:
+        default:
+          - recipe[dmon_agent::remove_node]
+      chef_attributes:
+        default:
+          java:
+            jdk_version:    { get_input: java_version }
+            install_flavor: { get_input: java_flavor  }
+
+  # Next two types are present here to make it possible to change them in the
+  # future without breaking our consumers
+  dice.components.cassandra.Seed:
+    derived_from: dice.components.cassandra.Base
+
+  dice.components.cassandra.Worker:
+    derived_from: dice.components.cassandra.Base
+
+
+  # Firewall rules that are needed for proper communication in cassandra
+  dice.firewall_rules.cassandra.Common:
+    derived_from: dice.firewall_rules.Base
+    properties:
+      rules:
+        default:
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 7000
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 7001
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 7199
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 9042
+          - ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port: 9160
+
+  # Next two are present only for convenience, since it may be easier for
+  # generator to generate firewall rules that correspond 1:1 onto TOSCA types.
+  dice.firewall_rules.cassandra.Seed:
+    derived_from: dice.firewall_rules.cassandra.Common
+
+  dice.firewall_rules.cassandra.Worker:
+    derived_from: dice.firewall_rules.cassandra.Common
+
+
+relationships:
+
+  dice.relationships.cassandra.ConnectedToSeed:
+    derived_from: cloudify.relationships.connected_to
+    properties:
+      connection_type: { default: all_to_one }
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure:
+          implementation: dice.dice_plugin.tasks.cassandra.gather_seeds

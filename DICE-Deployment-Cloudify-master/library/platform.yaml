@@ -1,0 +1,205 @@
+# Basic types that are platform dependent
+# =======================================
+
+# This is fixed for DICE library in order to have some control over what
+# capabilities we can expect from Cloudify.
+tosca_definitions_version: cloudify_dsl_1_3
+
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/3.4.1/types.yaml
+
+
+plugins:
+  dice:
+    source: this://is.invalid.address.that.marks.field.set.by.generator
+    executor: host_agent
+
+
+data_types:
+
+  dice.datatypes.PlatformConfig:
+    description: Configuration for all platform
+    properties:
+      aws:
+        type: dice.datatypes.aws.Config
+        required: false
+      fco:
+        type: dice.datatypes.fco.Config
+        required: false
+      openstack:
+        type: dice.datatypes.openstack.Config
+        required: false
+
+
+node_types:
+
+  dice.firewall_rules.Raw:
+    derived_from: cloudify.nodes.SecurityGroup
+    properties:
+      rules:
+        description: >
+          List of firewall rules. Firewall rules should have the following
+          fields: ip_prefix, protocol, from_port, to_port. If only a single
+          port should be opened, from_port and to_port fields can be replaced
+          by single port field.
+        default: []
+      platform:
+        description: >
+          Specifies what platform will host blueprint.
+        required: true
+      platform_config:
+        description: Configuration for underlying platform.
+        type: dice.datatypes.PlatformConfig
+        required: false
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: dice.dice_plugin.general.create_firewall
+          executor: central_deployment_agent
+        delete:
+          implementation: dice.dice_plugin.general.delete_firewall
+          executor: central_deployment_agent
+      cloudify.interfaces.validation:
+        creation:
+          implementation: dice.dice_plugin.general.validate_firewall
+          executor: central_deployment_agent
+
+  dice.RawVirtualIP:
+    derived_from: cloudify.nodes.VirtualIP
+    properties:
+      platform:
+        description: >
+          Specifies what platform will host blueprint.
+        required: true
+      platform_config:
+        description: Configuration for underlying platform.
+        type: dice.datatypes.PlatformConfig
+        required: false
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: dice.dice_plugin.general.create_virtual_ip
+          executor: central_deployment_agent
+        delete:
+          implementation: dice.dice_plugin.general.delete_virtual_ip
+          executor: central_deployment_agent
+      cloudify.interfaces.validation:
+        creation:
+          implementation: dice.dice_plugin.general.validate_virtual_ip
+          executor: central_deployment_agent
+
+  dice.RawImage:
+    derived_from: cloudify.nodes.Root
+    properties:
+      name:
+        description: >
+          The name that platform should assign to image
+        required: true
+      image:
+        description: >
+          Image source (URL or blueprint-relative path).
+        required: true
+      container_format:
+        description: Container format
+        required: false
+        default: bare
+      disk_format:
+        description: Disk format
+        required: false
+        default: qcow2
+      platform:
+        description: >
+          Specifies what platform will host blueprint.
+        required: true
+      platform_config:
+        description: Configuration for underlying platform.
+        type: dice.datatypes.PlatformConfig
+        required: false
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: dice.dice_plugin.general.create_image
+          executor: central_deployment_agent
+        delete:
+          implementation: dice.dice_plugin.general.delete_image
+          executor: central_deployment_agent
+
+  dice.hosts.Raw:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      image:
+        description: Cloud image of the operating system.
+        required: true
+      user:
+        description: User that can be usde to SSH into instance.
+        required: true
+      instance_type:
+        description: Instance type that should be used.
+        required: true
+      disk_type:
+        description: Disk type to be used.
+        required: true
+      platform:
+        description: >
+          Specifies what platform will host blueprint.
+        required: true
+      platform_config:
+        description: Configuration for underlying platform.
+        type: dice.datatypes.PlatformConfig
+        required: false
+      # !!! Cloudify implementation detail - should not be altered !!! #
+      agent_config:
+        default:
+          user: { get_property: [ SELF, user ] }
+          key: /root/.ssh/dice.key
+          install_method: remote
+      # !!! End Cloudify implementation detail - should not be altered !!! #
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: dice.dice_plugin.general.create_server
+          executor: central_deployment_agent
+        start:
+          implementation: dice.dice_plugin.general.start_server
+          executor: central_deployment_agent
+        stop:
+          implementation: dice.dice_plugin.general.stop_server
+          executor: central_deployment_agent
+        delete:
+          implementation: dice.dice_plugin.general.delete_server
+          executor: central_deployment_agent
+      cloudify.interfaces.validation:
+        creation:
+          implementation: dice.dice_plugin.general.validate_server
+          executor: central_deployment_agent
+
+
+relationships:
+
+  dice.relationships.ProtectedBy:
+    derived_from: cloudify.relationships.depends_on
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        establish:
+          implementation: dice.dice_plugin.general.apply_firewall
+          executor: central_deployment_agent
+        unlink:
+          implementation: dice.dice_plugin.general.detach_firewall
+          executor: central_deployment_agent
+
+  dice.relationships.IPAvailableFrom:
+    derived_from: cloudify.relationships.connected_to
+    target_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        establish:
+          implementation: dice.dice_plugin.general.notify_virtual_ip
+          executor: central_deployment_agent
+    source_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        establish:
+          implementation: dice.dice_plugin.general.connect_virtual_ip
+          executor: central_deployment_agent
+        unlink:
+          implementation: dice.dice_plugin.general.disconnect_virtual_ip
+          executor: central_deployment_agent
