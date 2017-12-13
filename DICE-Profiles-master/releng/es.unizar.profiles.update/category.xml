@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature url="features/com.masdes.dam.profile.feature_0.13.0.qualifier.jar" id="com.masdes.dam.profile.feature" version="0.13.0.qualifier">
+      <category name="Profiles"/>
+   </feature>
+   <feature url="features/com.masdes.dam.profile.ui.feature_0.13.0.qualifier.jar" id="com.masdes.dam.profile.ui.feature" version="0.13.0.qualifier">
+      <category name="Profiles"/>
+   </feature>
+   <feature url="features/es.unizar.disco.dice.profile.feature_0.13.0.qualifier.jar" id="es.unizar.disco.dice.profile.feature" version="0.13.0.qualifier">
+      <category name="Profiles"/>
+   </feature>
+   <feature url="features/ro.ieat.secureuml.profile.feature_0.13.0.qualifier.jar" id="ro.ieat.secureuml.profile.feature" version="0.13.0.qualifier">
+      <category name="Profiles"/>
+   </feature>
+   <category-def name="Profiles" label="Profiles"/>
+</site>
