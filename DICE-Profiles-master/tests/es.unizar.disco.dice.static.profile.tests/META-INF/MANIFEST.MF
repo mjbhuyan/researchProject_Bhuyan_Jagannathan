@@ -1,8 +1,0 @@
-Manifest-Version: 1.0
-Bundle-ManifestVersion: 2
-Bundle-Name: Tests
-Bundle-SymbolicName: es.unizar.disco.dice.static.profile.tests
-Bundle-Version: 0.12.8.qualifier
-Fragment-Host: es.unizar.disco.dice.static.profile;bundle-version="0.12.8"
-Bundle-RequiredExecutionEnvironment: JavaSE-1.8
-Require-Bundle: org.junit;bundle-version="4.12.0"
